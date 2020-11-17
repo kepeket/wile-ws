@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,32 +27,41 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	fmt.Println("new connection")
-
 	// register client
 	newClient := model.Socket{
 		ConnectionTime: time.Now(),
 		WebSocket:      ws,
 	}
 	clients[ws] = &newClient
-
-	envelop := model.Envelop{}
+	fmt.Printf("new connection (%d) %v+\n", len(clients), ws.RemoteAddr())
 
 	// Reader loop
 	go func() {
 		for {
-			err := ws.ReadJSON(&envelop)
+			var msg json.RawMessage
+			env := model.Envelop{
+				Message: &msg,
+			}
+			err := ws.ReadJSON(&env)
 			if err != nil {
 				log.Printf("read error: %v", err)
+				broadcast := model.Broadcast{
+					Sender: ws,
+					Message: model.RoomEventMessage{
+						Action: model.RoomLeft,
+						UserID: "someone",
+					},
+				}
+				roomLeftBroadcast <- &broadcast
 				ws.Close()
-
-				continue
+				break
 			}
-			switch envelop.Type {
+			fmt.Printf("message %s from %v+\n", env.Type, ws.RemoteAddr())
+			switch env.Type {
 			case model.PingType:
-				ReadPingMessage(envelop.Message, &newClient)
+				ReadPingMessage(env.Message.(*json.RawMessage), &newClient)
 			case model.RoomType:
-				ReadRoomMessage(envelop.Message, &newClient)
+				ReadRoomMessage(env.Message.(*json.RawMessage), &newClient)
 			}
 		}
 	}()

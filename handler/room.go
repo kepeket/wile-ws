@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/gorilla/websocket"
@@ -10,15 +9,16 @@ import (
 )
 
 var rooms = make(map[string]model.RoomSubscription)
-var roomCreatedBroadcast = make(chan *model.RoomEventMessage)
-var roomJoinedBroadcast = make(chan *model.RoomEventMessage)
-var roomLeftBroadcast = make(chan *model.RoomEventMessage)
+var roomCreatedBroadcast = make(chan *model.Broadcast)
+var roomJoinedBroadcast = make(chan *model.Broadcast)
+var roomLeftBroadcast = make(chan *model.Broadcast)
 
 // DispatchRoomMessage dispatch the room join message
 func DispatchRoomMessage() {
 	for {
 		select {
-		case val := <-roomCreatedBroadcast:
+		case event := <-roomCreatedBroadcast:
+			val := event.Message.(model.RoomEventMessage)
 			log.Printf("new room created %s", val.Name)
 			var msg []byte
 			envelop := model.Envelop{
@@ -27,7 +27,7 @@ func DispatchRoomMessage() {
 			}
 			msg, err := json.Marshal(envelop)
 			if err != nil {
-				log.Fatalf("Unable to send message %v+", err)
+				log.Fatalf("Unable to prepare message %v+", err)
 				continue
 			}
 
@@ -41,13 +41,48 @@ func DispatchRoomMessage() {
 					ws.Close()
 				}
 			}
-		case val := <-roomJoinedBroadcast:
-			log.Println("new room message received")
-			mess := fmt.Sprintf("someone has joined the room")
+		case event := <-roomJoinedBroadcast:
+			val := event.Message.(model.RoomEventMessage)
+			log.Printf("%s joined the room %v+", val.UserID, val)
+			var msg []byte
+			envelop := model.Envelop{
+				Type:    model.RoomType,
+				Message: val,
+			}
+			msg, err := json.Marshal(envelop)
+			if err != nil {
+				log.Fatalf("Unable to prepare message %v+", err)
+				continue
+			}
+
 			// send to every client that is currently connected
 			for ws, client := range rooms[val.Name].Clients {
 				client.Socket.Mu.Lock()
-				err := ws.WriteMessage(websocket.TextMessage, []byte(mess))
+				err := ws.WriteMessage(websocket.TextMessage, msg)
+				client.Socket.Mu.Unlock()
+				if err != nil {
+					log.Printf("Websocket error: %s", err)
+					ws.Close()
+				}
+			}
+		case event := <-roomLeftBroadcast:
+			val := event.Message.(model.RoomEventMessage)
+			log.Println("left room message received")
+			var msg []byte
+			delete(rooms[val.Name].Clients, event.Sender)
+			envelop := model.Envelop{
+				Type:    model.RoomType,
+				Message: val,
+			}
+			msg, err := json.Marshal(envelop)
+			if err != nil {
+				log.Fatalf("Unable to prepare message %v+", err)
+				continue
+			}
+			// send to every client that is currently connected
+			for ws, client := range rooms[val.Name].Clients {
+				client.Socket.Mu.Lock()
+				err := ws.WriteMessage(websocket.TextMessage, msg)
 				client.Socket.Mu.Unlock()
 				if err != nil {
 					log.Printf("Websocket error: %s", err)
@@ -59,12 +94,15 @@ func DispatchRoomMessage() {
 }
 
 // ReadRoomMessage goroutine to read
-func ReadRoomMessage(msg *[]byte, clientInfo *model.Socket) {
+func ReadRoomMessage(msg *json.RawMessage, clientInfo *model.Socket) {
 	var roomSub model.RoomSubscription
 	err := json.Unmarshal(*msg, &roomSub)
 	if err != nil {
 		log.Printf("room error: %v [%s]", err, msg)
 		return
+	}
+	broadcast := model.Broadcast{
+		Sender: clientInfo.WebSocket,
 	}
 	var roomName = roomSub.Name
 	if val, ok := rooms[roomName]; ok {
@@ -77,17 +115,17 @@ func ReadRoomMessage(msg *[]byte, clientInfo *model.Socket) {
 		}
 		if notInRoom {
 			val.Clients[clientInfo.WebSocket] = model.RoomMember{
-				UserID: val.UserID,
+				UserID: roomSub.UserID,
 				Socket: clientInfo,
 				Host:   false,
 			}
-			event := model.RoomEventMessage{
-				UserID: val.UserID,
+			broadcast.Message = model.RoomEventMessage{
+				UserID: roomSub.UserID,
 				Name:   roomName,
 				Action: model.RoomJoined,
 			}
 			// Send new joiner message
-			roomJoinedBroadcast <- &event
+			roomJoinedBroadcast <- &broadcast
 		}
 
 	} else {
@@ -99,13 +137,13 @@ func ReadRoomMessage(msg *[]byte, clientInfo *model.Socket) {
 			Host:   true,
 		}
 		rooms[roomName] = roomSub
-		event :=
+		broadcast.Message =
 			model.RoomEventMessage{
 				Action: model.RoomCreated,
 				Name:   roomName,
 				UserID: roomSub.UserID,
 			}
-		roomCreatedBroadcast <- &event
+		roomCreatedBroadcast <- &broadcast
 		log.Printf("new room created %s by %s\n", roomName, roomSub.UserID)
 	}
 }

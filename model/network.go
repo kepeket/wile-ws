@@ -1,8 +1,16 @@
 package model
 
+import "github.com/gorilla/websocket"
+
 // Envelop read buffer of the websocket
 type Envelop struct {
 	Type    MessageType
+	Message interface{}
+}
+
+// Broadcast wrap channel message
+type Broadcast struct {
+	Sender  *websocket.Conn
 	Message interface{}
 }
 

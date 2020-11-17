@@ -9,12 +9,13 @@ import (
 	"github.com/wile-ws/model"
 )
 
-var pingBroadcast = make(chan *model.Ping)
+var pingBroadcast = make(chan *model.Broadcast)
 
 // DispatchPingMessage dispatch the ping messages
 func DispatchPingMessage() {
 	for {
-		val := <-pingBroadcast
+		event := <-pingBroadcast
+		val := event.Message.(model.Ping)
 
 		origEnvelop := model.Envelop{
 			Type: model.PongType,
@@ -32,7 +33,7 @@ func DispatchPingMessage() {
 			client.Socket.Mu.Lock()
 			var msg []byte
 			var err error
-			if client.Host == true {
+			if ws == event.Sender {
 				msg, err = json.Marshal(origEnvelop)
 				if err != nil {
 					log.Fatalf("Unable to send message %v+", err)
@@ -56,7 +57,10 @@ func DispatchPingMessage() {
 }
 
 // ReadPingMessage goroutine to read pings
-func ReadPingMessage(msg *[]byte, clientInfo *model.Socket) {
+func ReadPingMessage(msg *json.RawMessage, clientInfo *model.Socket) {
+	broadcast := model.Broadcast{
+		Sender: clientInfo.WebSocket,
+	}
 	var ping model.Ping
 	err := json.Unmarshal(*msg, &ping)
 	if err != nil {
@@ -65,13 +69,15 @@ func ReadPingMessage(msg *[]byte, clientInfo *model.Socket) {
 	}
 	// Ensure you're part of a room
 	if room, ok := rooms[ping.RoomName]; ok {
-		if member, present := room.Clients[clientInfo.WebSocket]; !present {
-			log.Printf("%s not in room %v+", member.UserID, room)
+		if _, present := room.Clients[clientInfo.WebSocket]; !present {
+			log.Printf("%s not in room %v+", clientInfo.WebSocket.RemoteAddr(), room)
+			return
 		}
 	} else {
-		log.Printf("room %s doest no exist", ping.RoomName)
+		log.Printf("room %s doest no exist, %v", ping.RoomName, rooms)
 	}
-	pingBroadcast <- &ping
+	broadcast.Message = ping
+	pingBroadcast <- &broadcast
 }
 
 /*
