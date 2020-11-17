@@ -7,12 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Client maintain information and mutex of connection
-type Client struct {
-	Mu             sync.Mutex
-	ConnectionTime time.Time
-}
-
 // RoomSubscription information about users in a room
 type RoomSubscription struct {
 	UserID  string                         `json:"userId"`
@@ -20,26 +14,35 @@ type RoomSubscription struct {
 	Clients map[*websocket.Conn]RoomMember `json:"-"`
 }
 
-// RoomJoinedMessage information about users in a room
-type RoomJoinedMessage struct {
-	UserID string `json:"userId"`
-	Name   string `json:"name"`
-}
-
-// RoomCreatedMessage information about users in a room
-type RoomCreatedMessage struct {
-	Status bool   `json:"status"`
-	Name   string `json:"name"`
-}
-
 // RoomMember identify a client in a room
 type RoomMember struct {
-	UserID string  `json:"userId"`
-	Socket *Client `json:"-"`
+	UserID string
+	Socket *Socket
+	Host   bool
 }
 
-// Ping ping/pong message
-type Ping struct {
-	Timecode int32  `json:"timecode"`
-	RoomName string `json:"room"`
+// Socket maintain information and mutex of connection
+type Socket struct {
+	Mu             sync.Mutex
+	ConnectionTime time.Time
+	WebSocket      *websocket.Conn
+}
+
+// RoomActionType enum
+type RoomActionType string
+
+// RoomJoined
+// RoomCreated
+// RoomLeft
+const (
+	RoomJoined  RoomActionType = "joined"
+	RoomCreated RoomActionType = "created"
+	RoomLeft    RoomActionType = "left"
+)
+
+// RoomEventMessage information about users in a room
+type RoomEventMessage struct {
+	UserID string
+	Name   string
+	Action RoomActionType
 }

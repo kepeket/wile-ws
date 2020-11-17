@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/wile-ws/model"
@@ -14,12 +15,37 @@ var pingBroadcast = make(chan *model.Ping)
 func DispatchPingMessage() {
 	for {
 		val := <-pingBroadcast
-		log.Println("ping into room")
-		mess := fmt.Sprintf("someone has joined the room")
+
+		origEnvelop := model.Envelop{
+			Type: model.PongType,
+			Message: model.PongMessage{
+				Timecode: time.Now().UnixNano(),
+			},
+		}
+		memberEnvelop := model.Envelop{
+			Type:    model.PingType,
+			Message: val,
+		}
+
 		// send to every client that is currently connected
 		for ws, client := range rooms[val.RoomName].Clients {
 			client.Socket.Mu.Lock()
-			err := ws.WriteMessage(websocket.TextMessage, []byte(mess))
+			var msg []byte
+			var err error
+			if client.Host == true {
+				msg, err = json.Marshal(origEnvelop)
+				if err != nil {
+					log.Fatalf("Unable to send message %v+", err)
+					continue
+				}
+			} else {
+				msg, err = json.Marshal(memberEnvelop)
+				if err != nil {
+					log.Fatalf("Unable to send message %v+", err)
+					continue
+				}
+			}
+			err = ws.WriteMessage(websocket.TextMessage, msg)
 			client.Socket.Mu.Unlock()
 			if err != nil {
 				log.Printf("Websocket error: %s", err)
@@ -29,26 +55,32 @@ func DispatchPingMessage() {
 	}
 }
 
-// ReadPingMessages goroutine to read pings
-func ReadPingMessages(ws *websocket.Conn, clientInfo *model.Client) {
-	go func() {
-		for {
-			var ping model.Ping
-			clientInfo.Mu.Lock()
-			fmt.Println("Read ping")
-			err := ws.ReadJSON(&ping)
-			clientInfo.Mu.Unlock()
-			if err != nil {
-				log.Printf("error: %v", err)
-				continue
-			}
-
-			if room, ok := rooms[ping.RoomName]; ok {
-				if member, present := room.Clients[ws]; !present {
-					log.Printf("%s not in room %v+", member.UserID, room)
-				}
-			}
-			pingBroadcast <- &ping
+// ReadPingMessage goroutine to read pings
+func ReadPingMessage(msg *[]byte, clientInfo *model.Socket) {
+	var ping model.Ping
+	err := json.Unmarshal(*msg, &ping)
+	if err != nil {
+		log.Printf("ping error: %v %s", err, string(*msg))
+		return
+	}
+	// Ensure you're part of a room
+	if room, ok := rooms[ping.RoomName]; ok {
+		if member, present := room.Clients[clientInfo.WebSocket]; !present {
+			log.Printf("%s not in room %v+", member.UserID, room)
 		}
-	}()
+	} else {
+		log.Printf("room %s doest no exist", ping.RoomName)
+	}
+	pingBroadcast <- &ping
 }
+
+/*
+Ping
+when you send a ping message with a timecode
+- you expect to a pong from the server
+- members of the room also receive your ping
+
+Goal
+- detect lag between client and server
+- detect timespan bitween members (and possibly ajust clock)
+*/

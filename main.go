@@ -16,7 +16,7 @@ func main() {
 	router.HandleFunc("/chaussette", handler.WSHandler)
 
 	go handler.DispatchRoomMessage()
-	go handler.DispatchWorkoutMessage()
+	go handler.DispatchPingMessage()
 
 	fmt.Println(http.ListenAndServe(":8844", router))
 }
