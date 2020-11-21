@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -44,7 +45,15 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			err := ws.ReadJSON(&env)
 			if err != nil {
-				log.Printf("read error: %v", err)
+				log.Printf("read error: %s", reflect.TypeOf(err).String())
+				// errMess := model.Envelop{
+				// 	Type: model.ErrorType,
+				// 	Message: model.ErrorMessage{
+				// 		Message: err.Error(),
+				// 	},
+				// }
+				//log.Printf("sending err env %v+", errMess)
+				//log.Println(ws.WriteJSON(errMess))
 				broadcast := model.Broadcast{
 					Sender: ws,
 					Message: model.RoomEventMessage{

@@ -8,7 +8,7 @@ import (
 	"github.com/wile-ws/model"
 )
 
-var rooms = make(map[string]model.RoomSubscription)
+var rooms = make(map[string]model.RoomEventMessage)
 var roomCreatedBroadcast = make(chan *model.Broadcast)
 var roomJoinedBroadcast = make(chan *model.Broadcast)
 var roomLeftBroadcast = make(chan *model.Broadcast)
@@ -95,7 +95,7 @@ func DispatchRoomMessage() {
 
 // ReadRoomMessage goroutine to read
 func ReadRoomMessage(msg *json.RawMessage, clientInfo *model.Socket) {
-	var roomSub model.RoomSubscription
+	var roomSub model.RoomEventMessage
 	err := json.Unmarshal(*msg, &roomSub)
 	if err != nil {
 		log.Printf("room error: %v [%s]", err, msg)

@@ -15,7 +15,7 @@ var pingBroadcast = make(chan *model.Broadcast)
 func DispatchPingMessage() {
 	for {
 		event := <-pingBroadcast
-		val := event.Message.(model.Ping)
+		val := event.Message.(model.PingMessage)
 
 		origEnvelop := model.Envelop{
 			Type: model.PongType,
@@ -61,7 +61,7 @@ func ReadPingMessage(msg *json.RawMessage, clientInfo *model.Socket) {
 	broadcast := model.Broadcast{
 		Sender: clientInfo.WebSocket,
 	}
-	var ping model.Ping
+	var ping model.PingMessage
 	err := json.Unmarshal(*msg, &ping)
 	if err != nil {
 		log.Printf("ping error: %v %s", err, string(*msg))

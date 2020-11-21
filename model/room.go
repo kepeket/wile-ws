@@ -8,9 +8,10 @@ import (
 )
 
 // RoomSubscription information about users in a room
-type RoomSubscription struct {
+type RoomEventMessage struct {
 	UserID  string                         `json:"userId"`
 	Name    string                         `json:"name"`
+	Action  RoomActionType                 `json:"action"`
 	Clients map[*websocket.Conn]RoomMember `json:"-"`
 }
 
@@ -39,10 +40,3 @@ const (
 	RoomCreated RoomActionType = "created"
 	RoomLeft    RoomActionType = "left"
 )
-
-// RoomEventMessage information about users in a room
-type RoomEventMessage struct {
-	UserID string
-	Name   string
-	Action RoomActionType
-}
