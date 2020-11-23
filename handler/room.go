@@ -68,25 +68,41 @@ func DispatchRoomMessage() {
 		case event := <-roomLeftBroadcast:
 			val := event.Message.(model.RoomEventMessage)
 			log.Println("left room message received")
-			var msg []byte
-			delete(rooms[val.Name].Clients, event.Sender)
-			envelop := model.Envelop{
-				Type:    model.RoomType,
-				Message: val,
-			}
-			msg, err := json.Marshal(envelop)
-			if err != nil {
-				log.Fatalf("Unable to prepare message %v+", err)
-				continue
-			}
-			// send to every client that is currently connected
-			for ws, client := range rooms[val.Name].Clients {
-				client.Socket.Mu.Lock()
-				err := ws.WriteMessage(websocket.TextMessage, msg)
-				client.Socket.Mu.Unlock()
-				if err != nil {
-					log.Printf("Websocket error: %s", err)
-					ws.Close()
+
+			for roomname, room := range rooms {
+				for ws, client := range room.Clients {
+					if ws == event.Sender {
+						var msg []byte
+
+						val.UserID = client.UserID
+						envelop := model.Envelop{
+							Type:    model.RoomType,
+							Message: val,
+						}
+						msg, err := json.Marshal(envelop)
+						if err != nil {
+							log.Fatalf("Unable to prepare message %v+", err)
+							continue
+						}
+
+						// that was one of its room, lets notify everyone
+						for ws2 := range room.Clients {
+							client.Socket.Mu.Lock()
+							err := ws2.WriteMessage(websocket.TextMessage, msg)
+							client.Socket.Mu.Unlock()
+							if err != nil {
+								log.Printf("Websocket error: %s", err)
+								ws2.Close()
+							}
+						}
+						delete(room.Clients, event.Sender)
+						// do not break in case multiple people connected to the same socket
+						// break
+					}
+				}
+				// if room is empty, lets delete it to avoid memory leaks
+				if len(room.Clients) == 0 {
+					delete(rooms, roomname)
 				}
 			}
 		}
