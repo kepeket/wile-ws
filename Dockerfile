@@ -11,4 +11,6 @@ RUN go build -o /go/bin/app
 FROM gcr.io/distroless/base-debian10
 COPY --from=build /go/bin/app /
 
+ENV PORT 8080
+
 CMD ["/app"]

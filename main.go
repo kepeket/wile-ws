@@ -18,5 +18,5 @@ func main() {
 	go handler.DispatchRoomMessage()
 	go handler.DispatchPingMessage()
 
-	fmt.Println(http.ListenAndServe(":8844", router))
+	fmt.Println(http.ListenAndServe(":"+os.Getenv("PORT"), router))
 }
