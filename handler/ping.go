@@ -29,7 +29,7 @@ func DispatchPingMessage() {
 		}
 
 		// send to every client that is currently connected
-		for ws, client := range rooms[val.RoomName].Clients {
+		for ws, client := range Rooms[val.RoomName].Clients {
 			client.Socket.Mu.Lock()
 			var msg []byte
 			var err error
@@ -68,13 +68,13 @@ func ReadPingMessage(msg *json.RawMessage, clientInfo *model.Socket) {
 		return
 	}
 	// Ensure you're part of a room
-	if room, ok := rooms[ping.RoomName]; ok {
+	if room, ok := Rooms[ping.RoomName]; ok {
 		if _, present := room.Clients[clientInfo.WebSocket]; !present {
 			log.Printf("%s not in room %v+", clientInfo.WebSocket.RemoteAddr(), room)
 			return
 		}
 	} else {
-		log.Printf("room %s doest no exist, %v", ping.RoomName, rooms)
+		log.Printf("room %s doest no exist, %v", ping.RoomName, Rooms)
 	}
 	broadcast.Message = ping
 	pingBroadcast <- &broadcast

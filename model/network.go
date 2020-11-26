@@ -20,11 +20,12 @@ type MessageType string
 // RoomType room incoming message
 // PingType ping incoming message
 const (
-	RoomType  MessageType = "room"
-	PingType  MessageType = "ping"
-	PongType  MessageType = "pong"
-	NoneType  MessageType = "none"
-	ErrorType MessageType = "error"
+	RoomType    MessageType = "room"
+	PingType    MessageType = "ping"
+	PongType    MessageType = "pong"
+	NoneType    MessageType = "none"
+	ErrorType   MessageType = "error"
+	WorkoutType MessageType = "workout"
 )
 
 // PingMessage ping/pong message

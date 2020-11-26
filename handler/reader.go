@@ -83,6 +83,8 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 				ReadPingMessage(env.Message.(*json.RawMessage), &newClient)
 			case model.RoomType:
 				ReadRoomMessage(env.Message.(*json.RawMessage), &newClient)
+			case model.WorkoutType:
+				ReadWorkoutMessage(env.Message.(*json.RawMessage), &newClient)
 			}
 		}
 	}()

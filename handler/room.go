@@ -9,7 +9,8 @@ import (
 	"github.com/wile-ws/model"
 )
 
-var rooms = make(map[string]model.RoomEventMessage)
+// Rooms list to broadcast message to
+var Rooms = make(map[string]model.RoomEventMessage)
 var roomCreatedBroadcast = make(chan *model.Broadcast)
 var roomJoinedBroadcast = make(chan *model.Broadcast)
 var roomLeftBroadcast = make(chan *model.Broadcast)
@@ -27,7 +28,7 @@ func DispatchRoomMessage() {
 			}
 
 			// send to every client that is currently connected
-			for ws, client := range rooms[val.Name].Clients {
+			for ws, client := range Rooms[val.Name].Clients {
 				client.Socket.Mu.Lock()
 				err := ws.WriteJSON(envelop)
 				client.Socket.Mu.Unlock()
@@ -45,7 +46,7 @@ func DispatchRoomMessage() {
 			}
 
 			// send to every client that is currently connected
-			for ws, client := range rooms[val.Name].Clients {
+			for ws, client := range Rooms[val.Name].Clients {
 				client.Socket.Mu.Lock()
 				err := ws.WriteJSON(envelop)
 				client.Socket.Mu.Unlock()
@@ -58,7 +59,7 @@ func DispatchRoomMessage() {
 			val := event.Message.(model.RoomEventMessage)
 			log.Println("left room message received")
 
-			for roomname, room := range rooms {
+			for roomname, room := range Rooms {
 				for ws, client := range room.Clients {
 					if ws == event.Sender {
 						val.UserID = client.UserID
@@ -84,7 +85,7 @@ func DispatchRoomMessage() {
 				}
 				// if room is empty, lets delete it to avoid memory leaks
 				if len(room.Clients) == 0 {
-					delete(rooms, roomname)
+					delete(Rooms, roomname)
 				}
 			}
 		}
@@ -119,13 +120,13 @@ func ReadRoomMessage(msg *json.RawMessage, clientInfo *model.Socket) {
 }
 
 func create(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
-	if _, ok := rooms[r.Name]; !ok {
-		rooms[r.Name] = model.RoomEventMessage{
+	if _, ok := Rooms[r.Name]; !ok {
+		Rooms[r.Name] = model.RoomEventMessage{
 			Name:    r.Name,
 			UserID:  r.UserID,
 			Clients: make(map[*websocket.Conn]model.RoomMember),
 		}
-		rooms[r.Name].Clients[broadcast.Sender] = model.RoomMember{
+		Rooms[r.Name].Clients[broadcast.Sender] = model.RoomMember{
 			UserID: r.UserID,
 			Socket: client,
 			Host:   true,
@@ -144,7 +145,7 @@ func create(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.
 }
 
 func join(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
-	if val, ok := rooms[r.Name]; ok {
+	if val, ok := Rooms[r.Name]; ok {
 		notInRoom := true
 		for _, info := range val.Clients {
 			if info.UserID == r.UserID {
@@ -172,7 +173,7 @@ func join(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.So
 }
 
 func leave(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
-	if val, ok := rooms[r.Name]; ok {
+	if val, ok := Rooms[r.Name]; ok {
 		for _, info := range val.Clients {
 			if info.UserID == r.UserID {
 				val.Clients[broadcast.Sender] = model.RoomMember{

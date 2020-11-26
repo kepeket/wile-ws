@@ -23,6 +23,7 @@ func main() {
 
 	go handler.DispatchRoomMessage()
 	go handler.DispatchPingMessage()
+	go handler.DispatchWorkoutMessage()
 	go handler.DispatchErrorMessage()
 
 	fmt.Printf("listening on :%s\n", port)
