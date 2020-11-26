@@ -32,11 +32,17 @@ type Socket struct {
 // RoomActionType enum
 type RoomActionType string
 
-// RoomJoined
-// RoomCreated
-// RoomLeft
+// RoomJoin ask to join
+// RoomJoined notify someone joined
+// RoomCreate to create a room
+// RoomCreated notify it was created
+// RoomLeft notify someone left
+// RoomLeave ask to leave
 const (
+	RoomJoin    RoomActionType = "join"
 	RoomJoined  RoomActionType = "joined"
+	RoomCreate  RoomActionType = "create"
 	RoomCreated RoomActionType = "created"
 	RoomLeft    RoomActionType = "left"
+	RoomLeave   RoomActionType = "leave"
 )

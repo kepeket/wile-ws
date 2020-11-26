@@ -23,7 +23,9 @@ func main() {
 
 	go handler.DispatchRoomMessage()
 	go handler.DispatchPingMessage()
+	go handler.DispatchErrorMessage()
 
+	fmt.Printf("listening on :%s\n", port)
 	fmt.Println(http.ListenAndServe(":"+port, router))
 }
 

@@ -27,7 +27,7 @@ const (
 	ErrorType MessageType = "error"
 )
 
-// Ping ping/pong message
+// PingMessage ping/pong message
 type PingMessage struct {
 	Timecode int64  `json:"timecode"`
 	RoomName string `json:"room"`

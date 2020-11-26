@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 
 	"github.com/gorilla/websocket"
@@ -20,21 +21,15 @@ func DispatchRoomMessage() {
 		case event := <-roomCreatedBroadcast:
 			val := event.Message.(model.RoomEventMessage)
 			log.Printf("new room created %s", val.Name)
-			var msg []byte
 			envelop := model.Envelop{
 				Type:    model.RoomType,
 				Message: val,
-			}
-			msg, err := json.Marshal(envelop)
-			if err != nil {
-				log.Fatalf("Unable to prepare message %v+", err)
-				continue
 			}
 
 			// send to every client that is currently connected
 			for ws, client := range rooms[val.Name].Clients {
 				client.Socket.Mu.Lock()
-				err := ws.WriteMessage(websocket.TextMessage, msg)
+				err := ws.WriteJSON(envelop)
 				client.Socket.Mu.Unlock()
 				if err != nil {
 					log.Printf("Websocket error: %s", err)
@@ -44,21 +39,15 @@ func DispatchRoomMessage() {
 		case event := <-roomJoinedBroadcast:
 			val := event.Message.(model.RoomEventMessage)
 			log.Printf("%s joined the room %v+", val.UserID, val)
-			var msg []byte
 			envelop := model.Envelop{
 				Type:    model.RoomType,
 				Message: val,
-			}
-			msg, err := json.Marshal(envelop)
-			if err != nil {
-				log.Fatalf("Unable to prepare message %v+", err)
-				continue
 			}
 
 			// send to every client that is currently connected
 			for ws, client := range rooms[val.Name].Clients {
 				client.Socket.Mu.Lock()
-				err := ws.WriteMessage(websocket.TextMessage, msg)
+				err := ws.WriteJSON(envelop)
 				client.Socket.Mu.Unlock()
 				if err != nil {
 					log.Printf("Websocket error: %s", err)
@@ -72,23 +61,16 @@ func DispatchRoomMessage() {
 			for roomname, room := range rooms {
 				for ws, client := range room.Clients {
 					if ws == event.Sender {
-						var msg []byte
-
 						val.UserID = client.UserID
 						envelop := model.Envelop{
 							Type:    model.RoomType,
 							Message: val,
 						}
-						msg, err := json.Marshal(envelop)
-						if err != nil {
-							log.Fatalf("Unable to prepare message %v+", err)
-							continue
-						}
 
 						// that was one of its room, lets notify everyone
 						for ws2 := range room.Clients {
 							client.Socket.Mu.Lock()
-							err := ws2.WriteMessage(websocket.TextMessage, msg)
+							err := ws2.WriteJSON(envelop)
 							client.Socket.Mu.Unlock()
 							if err != nil {
 								log.Printf("Websocket error: %s", err)
@@ -120,46 +102,93 @@ func ReadRoomMessage(msg *json.RawMessage, clientInfo *model.Socket) {
 	broadcast := model.Broadcast{
 		Sender: clientInfo.WebSocket,
 	}
-	var roomName = roomSub.Name
-	if val, ok := rooms[roomName]; ok {
+	switch roomSub.Action {
+	case model.RoomJoin:
+		err = join(roomSub, &broadcast, clientInfo)
+	case model.RoomLeave:
+		err = leave(roomSub, &broadcast, clientInfo)
+	case model.RoomCreate:
+		err = create(roomSub, &broadcast, clientInfo)
+	}
+	if err != nil {
+		broadcast.Message = model.ErrorMessage{
+			Message: err.Error(),
+		}
+		ErrorBroadcast <- &broadcast
+	}
+}
+
+func create(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
+	if _, ok := rooms[r.Name]; !ok {
+		rooms[r.Name] = model.RoomEventMessage{
+			Name:    r.Name,
+			UserID:  r.UserID,
+			Clients: make(map[*websocket.Conn]model.RoomMember),
+		}
+		rooms[r.Name].Clients[broadcast.Sender] = model.RoomMember{
+			UserID: r.UserID,
+			Socket: client,
+			Host:   true,
+		}
+		broadcast.Message =
+			model.RoomEventMessage{
+				Action: model.RoomCreated,
+				Name:   r.Name,
+				UserID: r.UserID,
+			}
+		roomCreatedBroadcast <- broadcast
+		return nil
+	}
+	return errors.New("room_already_exists")
+
+}
+
+func join(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
+	if val, ok := rooms[r.Name]; ok {
 		notInRoom := true
 		for _, info := range val.Clients {
-			if info.UserID == roomSub.UserID {
+			if info.UserID == r.UserID {
 				notInRoom = false
 				break
 			}
 		}
 		if notInRoom {
-			val.Clients[clientInfo.WebSocket] = model.RoomMember{
-				UserID: roomSub.UserID,
-				Socket: clientInfo,
+			val.Clients[broadcast.Sender] = model.RoomMember{
+				UserID: r.UserID,
+				Socket: client,
 				Host:   false,
 			}
 			broadcast.Message = model.RoomEventMessage{
-				UserID: roomSub.UserID,
-				Name:   roomName,
+				UserID: r.UserID,
+				Name:   r.Name,
 				Action: model.RoomJoined,
 			}
-			// Send new joiner message
-			roomJoinedBroadcast <- &broadcast
+			roomJoinedBroadcast <- broadcast
+			return nil
 		}
-
-	} else {
-		// create new room
-		roomSub.Clients = make(map[*websocket.Conn]model.RoomMember)
-		roomSub.Clients[clientInfo.WebSocket] = model.RoomMember{
-			UserID: roomSub.UserID,
-			Socket: clientInfo,
-			Host:   true,
-		}
-		rooms[roomName] = roomSub
-		broadcast.Message =
-			model.RoomEventMessage{
-				Action: model.RoomCreated,
-				Name:   roomName,
-				UserID: roomSub.UserID,
-			}
-		roomCreatedBroadcast <- &broadcast
-		log.Printf("new room created %s by %s\n", roomName, roomSub.UserID)
+		return errors.New("already_in_room")
 	}
+	return errors.New("room_does_not_exists")
+}
+
+func leave(r model.RoomEventMessage, broadcast *model.Broadcast, client *model.Socket) error {
+	if val, ok := rooms[r.Name]; ok {
+		for _, info := range val.Clients {
+			if info.UserID == r.UserID {
+				val.Clients[broadcast.Sender] = model.RoomMember{
+					UserID: r.UserID,
+					Socket: client,
+					Host:   false,
+				}
+				broadcast.Message = model.RoomEventMessage{
+					Action: model.RoomLeft,
+					UserID: r.UserID,
+				}
+				roomLeftBroadcast <- broadcast
+				return nil
+			}
+		}
+		return errors.New("not_in_room")
+	}
+	return errors.New("room_does_not_exists")
 }

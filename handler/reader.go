@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/websocket"
 	"github.com/wile-ws/model"
 )
@@ -20,6 +21,24 @@ var upgrader = websocket.Upgrader{
 
 // Clients list of subscribed clients
 var clients = make(map[*websocket.Conn]*model.Socket)
+
+// ErrorBroadcast public error broadcast
+var ErrorBroadcast = make(chan *model.Broadcast)
+
+// DispatchErrorMessage dispatch error message to the socket
+func DispatchErrorMessage() {
+	for {
+		event := <-ErrorBroadcast
+		val := event.Message.(model.ErrorMessage)
+		envelop := model.Envelop{
+			Type:    model.ErrorType,
+			Message: val,
+		}
+
+		// send to broadcast sender
+		event.Sender.WriteJSON(envelop)
+	}
+}
 
 // WSHandler handle room subscription
 func WSHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,16 +63,9 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 				Message: &msg,
 			}
 			err := ws.ReadJSON(&env)
+			spew.Dump(env)
 			if err != nil {
 				log.Printf("read error: %s", reflect.TypeOf(err).String())
-				// errMess := model.Envelop{
-				// 	Type: model.ErrorType,
-				// 	Message: model.ErrorMessage{
-				// 		Message: err.Error(),
-				// 	},
-				// }
-				//log.Printf("sending err env %v+", errMess)
-				//log.Println(ws.WriteJSON(errMess))
 				broadcast := model.Broadcast{
 					Sender: ws,
 					Message: model.RoomEventMessage{
